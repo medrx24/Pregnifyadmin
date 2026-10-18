@@ -141,7 +141,23 @@
         .badge.bad { background: #fee2e2; color: #991b1b; }
         .badge.pending { background: #fef3c7; color: #d97706; }
         .badge.promo { background: #ede9fe; color: #6d28d9; }
-        .badge.exp-warn { background: #fef3c7; color: #d97706; }
+        
+        /* Premium Clean Expiry & Activation Badge UI */
+        .expiry-container {
+            font-size: 0.76em;
+            line-height: 1.4;
+            background: #f8fafc;
+            padding: 6px 10px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            display: inline-block;
+        }
+        .expiry-container .dates {
+            color: var(--text-main);
+            font-weight: 500;
+        }
+        .badge.exp-warn { background: #fef3c7; color: #b45309; padding: 2px 8px; font-size: 0.65em; border-radius: 6px; font-weight: 700; display: inline-block; margin-top: 3px; }
+        .badge.exp-expired { background: #fee2e2; color: #991b1b; padding: 2px 8px; font-size: 0.65em; border-radius: 6px; font-weight: 700; display: inline-block; margin-top: 3px; }
 
         /* Compact action buttons */
         .action-btns { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
@@ -430,7 +446,7 @@
             </div>
         </div>
 
-        <!-- TAB 5: CONTENT MANAGER (Full-Screen) -->
+        <!-- TAB 5: CONTENT MANAGER (Full-Screen & 4 Dedicated Datasets Synced) -->
         <div id="tab-content" class="app-view">
             <div class="card" style="min-height: 78vh;">
                 <div class="card-title">
@@ -439,7 +455,8 @@
                 </div>
                 <div style="display: flex; gap: 6px; margin-bottom: 10px;">
                     <select id="c-type" onchange="cLoad()" style="flex: 2; padding: 7px; font-size: 0.82em;">
-                        <option value="drugs">Drugs & Meds</option>
+                        <option value="pregSafe">Pregnancy Safe Drugs</option>
+                        <option value="pediaDrugs">Pedi Drugs & Meds</option>
                         <option value="guides">Guidelines</option>
                         <option value="diseases">Diseases</option>
                     </select>
@@ -505,7 +522,7 @@
 
                 <hr style="border:0; border-top:1px solid var(--border); margin-bottom: 16px;">
 
-                <!-- Bulk Code Import Section (Fixed Logic) -->
+                <!-- Bulk Code Import Section -->
                 <div class="form-group" style="margin-bottom: 8px;">
                     <label style="font-size: 0.82em; font-weight: 700; color: var(--primary-dark);">Bulk Code Import:</label>
                     <p style="font-size: 0.75em; color: var(--text-muted); margin-bottom: 6px;">Format per line: <b>CODE DAYS</b> (e.g. KABBO30 30)</p>
@@ -625,7 +642,7 @@
         </div>
     </div>
 
-    <!-- Grant Premium Subscription Modal (With Pending, Active, Blocked & Custom Duration) -->
+    <!-- Grant Premium Subscription Modal -->
     <div id="grant-modal" class="modal-overlay" onclick="closeGrantModal(event)">
         <div class="modal-card" onclick="event.stopPropagation()">
             <div class="modal-header">
@@ -697,6 +714,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
     <script src="pedia-drugs.js"></script>
     <script src="medical-content.js"></script>
+    <script src="preg-safe-drug.js"></script>
     
     <script>
         // Firebase Configuration
@@ -1042,11 +1060,11 @@
 
         var lic = {};
 
-        // Load Users Table with Expiry Countdown & User Edit support
+        // Load Users Table with Clean Activation & Expiry Date Display
         async function lu() {
             var s = await db.collection('users').get();
             var searchTxt = $('user-search').value.toLowerCase().trim();
-            var h = '<tr><th>User</th><th>Status</th><th>Expiry & Countdown</th><th>Action</th></tr>';
+            var h = '<tr><th>User</th><th>Status</th><th>Activation & Expiry</th><th>Action</th></tr>';
             var ls = await db.collection('licenses').get();
             ls.forEach(function(d) { lic[d.id] = d.data(); });
             
@@ -1058,16 +1076,20 @@
                 if(searchTxt && !emailMatch && !nameMatch) return;
 
                 var l = lic[u.licenseId];
-                var expDate = l && u.activatedAt ? new Date(u.activatedAt.toMillis() + ((l.days || 0) + (u.extraDays || 0)) * 864e5) : null;
+                var actDate = u.activatedAt && u.activatedAt.toDate ? u.activatedAt.toDate() : null;
+                var expDate = l && actDate ? new Date(actDate.getTime() + ((l.days || 0) + (u.extraDays || 0)) * 864e5) : null;
                 
-                var expStr = "—";
-                if(expDate) {
+                var dateStr = "—";
+                if(actDate && expDate) {
                     var diffDays = Math.ceil((expDate - new Date()) / (1000 * 60 * 60 * 24));
-                    if(diffDays > 0) {
-                        expStr = expDate.toLocaleDateString('en-GB') + ' <br><span class="badge exp-warn">' + diffDays + ' days left</span>';
-                    } else {
-                        expStr = expDate.toLocaleDateString('en-GB') + ' <br><span class="badge bad">Expired</span>';
-                    }
+                    var badgeColor = diffDays > 0 ? 'exp-warn' : 'exp-expired';
+                    var badgeText = diffDays > 0 ? diffDays + ' days left' : 'Expired';
+                    
+                    dateStr = '<div class="expiry-container">' +
+                              '<div class="dates"><b>Act:</b> ' + actDate.toLocaleDateString('en-GB') + '</div>' +
+                              '<div class="dates"><b>Exp:</b> ' + expDate.toLocaleDateString('en-GB') + '</div>' +
+                              '<span class="badge ' + badgeColor + '">' + badgeText + '</span>' +
+                              '</div>';
                 }
 
                 var statusBadgeClass = u.status == 'active' ? 'ok' : (u.status == 'pending' ? 'pending' : 'bad');
@@ -1075,7 +1097,7 @@
                 h += '<tr>' +
                     '<td><b>' + esc(u.email ? u.email.split('@')[0] : 'No Email') + '</b><br><small>' + esc(u.name || 'User') + '</small></td>' +
                     '<td><span class="badge ' + statusBadgeClass + '">' + esc(u.status || 'active') + '</span></td>' +
-                    '<td>' + expStr + '</td>' +
+                    '<td>' + dateStr + '</td>' +
                     '<td><div class="action-btns">' +
                     '<button class="' + (u.status == 'active' ? 'btn-danger' : 'btn-success') + '" data-a="' + (u.status == 'active' ? 'block' : 'unblock') + '" data-id="' + d.id + '">' + (u.status == 'active' ? 'Block' : 'Unblock') + '</button>' +
                     '<button class="btn-warning" data-a="uedit" data-id="' + d.id + '" data-name="' + esc(u.name || '') + '" data-email="' + esc(u.email || '') + '" data-status="' + esc(u.status || 'active') + '" data-activated="' + (u.activatedAt ? u.activatedAt.toMillis() : '') + '" data-lic="' + (u.licenseId || '') + '">Edit</button>' +
@@ -1397,10 +1419,13 @@
             loadAllData();
         });
 
-        // ===== Content Manager & Fixed Bulk Code Import Logic with Confirmation Popup =====
-        var CT = { drugs: ['content_drugs', 'name', function () { return typeof pedDrugsList != 'undefined' ? pedDrugsList : []; }],
-                   guides: ['content_guidelines', 'title', function () { return typeof guidelineDatabase != 'undefined' ? guidelineDatabase : []; }],
-                   diseases: ['content_diseases', 'title', function () { return typeof uniqueDiseaseDatabase != 'undefined' ? uniqueDiseaseDatabase : []; }] };
+        // ===== Content Manager (Synced with 4 Datasets: pregSafe, pediaDrugs, guides, diseases) =====
+        var CT = { 
+            pregSafe: ['content_preg_safe', 'name', function () { return typeof drugData != 'undefined' ? drugData : []; }],
+            pediaDrugs: ['content_drugs', 'name', function () { return typeof pedDrugsList != 'undefined' ? pedDrugsList : []; }],
+            guides: ['content_guidelines', 'title', function () { return typeof guidelineDatabase != 'undefined' ? guidelineDatabase : []; }],
+            diseases: ['content_diseases', 'title', function () { return typeof uniqueDiseaseDatabase != 'undefined' ? uniqueDiseaseDatabase : []; }]
+        };
         var cDocs = [], cEdit = null;
         function cBump() { return db.collection('meta').doc('content').set({ v: Date.now() }); }
         async function cLoad() { var k = $('c-type').value, s = await db.collection(CT[k][0]).orderBy('_o').get(); cDocs = s.docs; cRender(); }
@@ -1417,7 +1442,7 @@
         }
         async function cSave() {
             var k = $('c-type').value, o; try { o = JSON.parse($('c-json').value); } catch (e) { return alert('Invalid JSON: ' + e.message); }
-            if (k == 'drugs' && !o.id) o.id = Date.now();
+            if (k == 'pediaDrugs' && !o.id) o.id = Date.now();
             var t = String(o[CT[k][1]] || ''), col = db.collection(CT[k][0]);
             if (cEdit) await col.doc(cEdit).update({ t: t, json: JSON.stringify(o) }); else await col.add({ t: t, json: JSON.stringify(o), _o: Date.now() });
             await cBump(); $('c-ed').style.display = 'none'; cLoad();
@@ -1468,8 +1493,6 @@
             $('c-codes').value = '';
             closeSettingsModal();
             loadAllData();
-            
-            // Confirmation Popup with details
             alert("🎉 Success! " + importedCount + " legacy license codes have been successfully imported into Firebase database.");
         }
         $('c-list').addEventListener('click', async function (e) {
