@@ -226,6 +226,32 @@
         /* Role-based access: assistants cannot see .adm-only elements */
         body.role-assistant .adm-only { display: none !important; }
         body.role-assistant #bottom-nav { grid-template-columns: repeat(4, 1fr); }
+        .chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 10px; }
+        .chip { background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px; font-size: 0.75em; font-weight: 600; }
+        .chip b { font-size: 1.15em; }
+        .warn-txt { color: #b91c1c; font-weight: 700; }
+        .live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #10b981; margin-right: 4px; }
+
+        /* ===== Tablet / Desktop: full-width layout with left sidebar ===== */
+        @media (min-width: 600px) and (max-width: 899px) { main { max-width: 720px; } }
+        @media (min-width: 900px) {
+            body { padding-bottom: 0; font-size: 15px; }
+            header { padding: 14px 32px; }
+            #bottom-nav { top: 62px; bottom: 0; left: 0; width: 230px; height: auto; grid-template-columns: 1fr; grid-auto-rows: 46px; align-content: start; gap: 4px; padding: 14px 10px; border-top: 0; border-right: 1px solid var(--border); box-shadow: none; }
+            body.role-assistant #bottom-nav { grid-template-columns: 1fr; }
+            .nav-item { flex-direction: row; justify-content: flex-start; gap: 12px; font-size: 0.9em; padding: 0 14px; border-radius: 10px; }
+            .nav-item.active { background: #eef2ff; }
+            .nav-item.active .material-icons { transform: none; }
+            .nav-item .material-icons { font-size: 22px; }
+            main { max-width: none; margin: 20px 0 30px 230px; padding: 0 32px; }
+            .app-view { max-width: 1240px; margin-left: auto; margin-right: auto; }
+            .stats-grid { grid-template-columns: repeat(4, 1fr); }
+            #tab-dashboard.active-view, #tab-licenses.active-view, #tab-broadcast.active-view, #tab-inbox.active-view { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; align-items: start; }
+            #tab-dashboard .stats-grid, #tab-licenses .card:last-child, #bc-history-card { grid-column: 1 / -1; }
+            table { min-width: 0; }
+            .modal-card { max-width: 520px; }
+            #toast-notification { bottom: 30px; }
+        }
     </style>
 </head>
 <body>
@@ -344,22 +370,15 @@
                 <div id="expiry-radar"><small>No expiring users</small></div>
             </div>
 
-            <!-- NEW: Search Analytics -->
+            <!-- Search Analytics (live) -->
             <div class="card">
                 <div class="card-title">
-                    <span><span class="material-icons" style="font-size: 18px; color: var(--primary);">manage_search</span> Search Analytics</span>
-                    <button class="btn-secondary" onclick="loadSearchAnalytics()" style="padding: 5px 10px; font-size: 0.75em;">Load</button>
+                    <span><span class="material-icons" style="font-size: 18px; color: var(--primary);">manage_search</span> Search Analytics <small style="color: var(--success);">● live</small></span>
                 </div>
-                <div id="search-analytics"><small>App must write <b>search_logs</b> docs: {q, n, at}</small></div>
+                <div id="search-analytics"><small>Loading...</small></div>
             </div>
 
-            <!-- Quick Action Info Card -->
-            <div class="card" style="background: linear-gradient(135deg, #e0e7ff, #f8fafc); border-color: #c7d2fe;">
-                <h4 style="font-size: 0.95em; color: var(--primary-dark); margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
-                    <span class="material-icons" style="font-size: 18px;">info</span> Quick Navigation
-                </h4>
-                <p style="font-size: 0.8em; color: var(--text-muted);">Use the bottom navigation bar to switch between Generator, Analytics, Users, Inbox, Broadcast and Content effortlessly.</p>
-            </div>
+            
         </div>
 
         <!-- TAB 2: LICENSES & PROMO -->
@@ -439,8 +458,17 @@
                 <div class="table-toolbar">
                     <div class="search-filter-group">
                         <input type="text" id="user-search" placeholder="Search by name or email..." onkeyup="lu()">
+                        <select id="user-filter" onchange="lu()">
+                            <option value="all">All</option>
+                            <option value="online">🟢 Online now</option>
+                            <option value="active">Active</option>
+                            <option value="expired">Expired</option>
+                            <option value="blocked">Blocked</option>
+                            <option value="shared">⚠️ Shared license</option>
+                        </select>
                     </div>
                 </div>
+                <div id="user-summary" class="chips"></div>
                 <div class="table-wrapper">
                     <table id="ut"></table>
                 </div>
@@ -519,6 +547,13 @@
                     </div>
                     <p id="prev-msg" style="font-size: 0.8em; color: #4b5563; line-height: 1.4;">Your broadcast message preview will appear here in real-time as you type above...</p>
                 </div>
+            </div>
+            <!-- All broadcasts (history list, stored in database) -->
+            <div class="card" id="bc-history-card">
+                <div class="card-title">
+                    <span><span class="material-icons" style="font-size: 18px; color: var(--primary);">history</span> All Broadcasts (saved in database)</span>
+                </div>
+                <div id="bc-list"><small>Loading...</small></div>
             </div>
         </div>
 
@@ -704,7 +739,7 @@
                 </div>
                 <div class="form-group">
                     <label>WhatsApp Phone (for renew messages):</label>
-                    <input type="tel" id="edit-user-phone" placeholder="01XXXXXXXXX">
+                    <input type="tel" id="edit-user-phone" placeholder="01724651212">
                 </div>
                 <div class="form-group">
                     <label>Account Status:</label>
@@ -851,7 +886,7 @@
         function localDate(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 
         // ===== Caches filled by real-time listeners (NEW: replaces repeated .get() calls) =====
-        var lic = {}, usersCache = {}, promoCache = {}, payCache = {}, repCache = {};
+        var lic = {}, usersCache = {}, promoCache = {}, payCache = {}, repCache = {}, bcCache = {}, sLogs = [], sErr = '', licUsers = {};
         var me = '', unsubs = [], renderTimer = 0, LC = {};
 
         // ===== NEW: Audit log =====
@@ -1057,7 +1092,7 @@
         function renderAll() {
             cancelAnimationFrame(renderTimer);
             renderTimer = requestAnimationFrame(function() {
-                updateStats(); lu(); ll(); lp(); lpay(); lrep(); renderRadar();
+                calcLicUsers(); updateStats(); lu(); ll(); lp(); lpay(); lrep(); renderRadar(); lbc();
             });
         }
         // Load All Data & Update Dashboard Stats & Revenue Chart
@@ -1068,6 +1103,10 @@
             listen('promo_codes', function(o) { promoCache = o; });
             listen('payments', function(o) { payCache = o; });
             listen('reports', function(o) { repCache = o; });
+            listen('broadcasts', function(o) { bcCache = o; });
+            unsubs.push(db.collection('search_logs').orderBy('at', 'desc').limit(500).onSnapshot(function(s) {
+                sLogs = s.docs.map(function(d) { return d.data(); }); sErr = ''; renderSearch();
+            }, function(e) { sErr = e.message; renderSearch(); }));
         }
 
         let revenueChartInstance = null;
@@ -1179,25 +1218,33 @@
             $('expiry-radar').innerHTML = h || '<small>No expiring users 🎉</small>';
         }
 
-        // ===== NEW: Search Analytics (reads search_logs written by the user app) =====
-        async function loadSearchAnalytics() {
-            try {
-                var s = await db.collection('search_logs').orderBy('at', 'desc').limit(500).get();
-                var top = {}, zero = {};
-                s.forEach(function(d) {
-                    var x = d.data(), q = String(x.q || '').toLowerCase().trim();
-                    if (!q) return;
-                    top[q] = (top[q] || 0) + 1;
-                    if (!x.n) zero[q] = (zero[q] || 0) + 1;
-                });
-                var list = function(o) {
-                    return Object.keys(o).sort(function(a, b) { return o[b] - o[a]; }).slice(0, 8).map(function(q) {
-                        return '<div class="mini-row"><span>' + esc(q) + '</span><b>' + o[q] + '</b></div>';
-                    }).join('') || '<small>None</small>';
-                };
-                $('search-analytics').innerHTML = '<b style="font-size:0.85em">Top searches</b>' + list(top) + '<br><b style="font-size:0.85em">No-result searches (add these to the database!)</b>' + list(zero);
-            } catch(e) { alert('❌ ' + e.message); }
+        // ===== Search Analytics (live from search_logs written by the user app) =====
+        function renderSearch() {
+            var box = $('search-analytics'); if (!box) return;
+            if (sErr) { box.innerHTML = '<small class="warn-txt">⚠️ ' + esc(sErr) + '<br>Add a Firestore rule for <b>search_logs</b> (admin read, signed-in create).</small>'; return; }
+            var top = {}, zero = {}, recent = [];
+            sLogs.forEach(function(x, i) {
+                var q = String(x.q || '').toLowerCase().trim(); if (!q) return;
+                top[q] = (top[q] || 0) + 1; if (!x.n) zero[q] = (zero[q] || 0) + 1;
+                if (recent.length < 8) recent.push(x);
+            });
+            var list = function(o) {
+                return Object.keys(o).sort(function(a, b) { return o[b] - o[a]; }).slice(0, 8).map(function(q) {
+                    return '<div class="mini-row"><span>' + esc(q) + '</span><b>' + o[q] + '</b></div>';
+                }).join('') || '<small>None</small>';
+            };
+            if (!sLogs.length) { box.innerHTML = '<small>No searches yet. Searches appear here live once users search in the updated user app (index_Final.html).</small>'; return; }
+            box.innerHTML = '<div class="chips"><div class="chip"><b>' + sLogs.length + '</b> searches (last 500)</div><div class="chip"><b>' + Object.keys(zero).length + '</b> no-result terms</div></div>' +
+                '<b style="font-size:0.85em">Top searches</b>' + list(top) +
+                '<br><b style="font-size:0.85em;color:#b91c1c">No-result searches — add these to the database!</b>' + list(zero) +
+                '<br><b style="font-size:0.85em">Latest</b>' + recent.map(function(x) { return '<div class="mini-row"><span>' + esc(x.q) + (x.n ? '' : ' ❌') + '</span><small>' + ago(x.at && x.at.toDate ? x.at.toDate().getTime() : 0) + '</small></div>'; }).join('');
         }
+        function ago(ms) {
+            if (!ms) return '—'; var m = Math.round((Date.now() - ms) / 60000);
+            return m < 1 ? 'just now' : m < 60 ? m + 'm ago' : m < 1440 ? Math.round(m / 60) + 'h ago' : Math.round(m / 1440) + 'd ago';
+        }
+        // users per license (detects one key used by many accounts)
+        function calcLicUsers() { licUsers = {}; Object.keys(usersCache).forEach(function(id) { var l = usersCache[id].licenseId; if (l) licUsers[l] = (licUsers[l] || 0) + 1; }); }
 
         // License Generator Handler (FIX: qty clamped, one atomic batch, error handling)
         $('gen').onclick = async function() {
@@ -1276,51 +1323,62 @@
             $('promo-table').innerHTML = h;
         }
 
-        // Load Users Table with Clean Activation & Expiry Date Display (from cache)
+        // Load Users Table: activation/expiry + live presence + devices + accounts-per-license
         function lu() {
-            var searchTxt = $('user-search').value.toLowerCase().trim();
-            var h = '<tr><th>User</th><th>Status</th><th>Activation & Expiry</th><th>Action</th></tr>';
-            
+            var searchTxt = $('user-search').value.toLowerCase().trim(), f = $('user-filter').value, now = Date.now();
+            var online = 0, active = 0, shared = 0, total = 0;
+            var h = '<tr><th>User</th><th>Status</th><th>Activation & Expiry</th><th>Live / Devices</th><th>Action</th></tr>';
+
             Object.keys(usersCache).forEach(function(id) {
-                var u = usersCache[id];
+                var u = usersCache[id]; total++;
+                var ls = u.lastSeen && u.lastSeen.toDate ? u.lastSeen.toDate().getTime() : 0, isOn = ls && now - ls < 3 * 60000;
+                var actDate = u.activatedAt && u.activatedAt.toDate ? u.activatedAt.toDate() : null;
+                var expDate = expiryOf(u), expired = expDate && expDate.getTime() <= now;
+                var cnt = u.licenseId ? (licUsers[u.licenseId] || 0) : 0, isShared = cnt > 1;
+                if (isOn) online++; if (u.status === 'active' && !expired) active++; if (isShared) shared++;
+
+                if (f === 'online' && !isOn) return;
+                if (f === 'active' && !(u.status === 'active' && !expired)) return;
+                if (f === 'expired' && !expired) return;
+                if (f === 'blocked' && u.status !== 'blocked') return;
+                if (f === 'shared' && !isShared) return;
                 var emailMatch = u.email && u.email.toLowerCase().includes(searchTxt);
                 var nameMatch = u.name && u.name.toLowerCase().includes(searchTxt);
-                
-                if(searchTxt && !emailMatch && !nameMatch) return;
+                if (searchTxt && !emailMatch && !nameMatch) return;
 
-                var actDate = u.activatedAt && u.activatedAt.toDate ? u.activatedAt.toDate() : null;
-                var expDate = expiryOf(u);
-                
                 var dateStr = "—";
-                if(actDate && expDate) {
+                if (actDate && expDate) {
                     var diffDays = Math.ceil((expDate - new Date()) / (1000 * 60 * 60 * 24));
                     var badgeColor = diffDays > 0 ? 'exp-warn' : 'exp-expired';
                     var badgeText = diffDays > 0 ? diffDays + ' days left' : 'Expired';
-                    
                     dateStr = '<div class="expiry-container">' +
                               '<div class="dates"><b>Act:</b> ' + actDate.toLocaleDateString('en-GB') + '</div>' +
                               '<div class="dates"><b>Exp:</b> ' + expDate.toLocaleDateString('en-GB') + '</div>' +
                               '<span class="badge ' + badgeColor + '">' + badgeText + '</span>' +
                               '</div>';
                 }
-
                 var statusBadgeClass = u.status == 'active' ? 'ok' : (u.status == 'pending' ? 'pending' : 'bad');
-                // NEW: suspicious device alert (3+ device switches = possible license sharing)
                 var flag = (u.deviceSwitches || 0) >= 3 ? ' <span class="flag-warn" title="Suspicious: ' + (+u.deviceSwitches) + ' device switches">🚩</span>' : '';
                 var sid = esc(id);
+                var live = (isOn ? '<span class="badge ok"><span class="live-dot"></span>Online</span>' : '<small>' + (ls ? 'Last seen ' + ago(ls) : 'Never seen') + '</small>') +
+                    '<br><small>📱 ' + (u.deviceId ? esc(String(u.deviceId).slice(0, 8)) : 'no device') + ' · ' + (+u.deviceSwitches || 0) + ' switches</small>' +
+                    (isShared ? '<br><span class="badge bad">' + cnt + ' accounts on 1 license</span>' : (cnt ? '<br><small>1 account on license</small>' : ''));
 
                 h += '<tr>' +
                     '<td><b>' + esc(u.email ? u.email.split('@')[0] : 'No Email') + '</b>' + flag + '<br><small>' + esc(u.name || 'User') + '</small></td>' +
                     '<td><span class="badge ' + statusBadgeClass + '">' + esc(u.status || 'active') + '</span></td>' +
                     '<td>' + dateStr + '</td>' +
+                    '<td>' + live + '</td>' +
                     '<td><div class="action-btns">' +
-                    '<button class="' + (u.status == 'blocked' ? 'btn-success' : 'btn-danger') + '" data-a="' + (u.status == 'blocked' ? 'unblock' : 'block') + '" data-id="' + sid + '">' + (u.status == 'blocked' ? 'Unblock' : 'Block') + '</button>' +
+                    '<button class="' + (u.status == 'blocked' ? 'btn-success' : 'btn-danger') + '" data-a="' + (u.status == 'blocked' ? 'unblock' : 'block') + '" data-id="' + sid + '">' + (u.status == 'blocked' ? 'Unblock' : 'Ban') + '</button>' +
                     '<button class="btn-warning" data-a="uedit" data-id="' + sid + '">Edit</button>' +
-                    '<button class="btn-secondary" data-a="reset" data-id="' + sid + '" title="Force Logout / Reset Device">Logout</button>' +
+                    '<button class="btn-secondary" data-a="reset" data-id="' + sid + '" title="Force logout / reset device">Logout</button>' +
                     '<button class="btn-success adm-only" data-a="grant" data-id="' + sid + '" title="Grant Premium Access">Grant</button>' +
+                    '<button class="btn-danger adm-only" data-a="udel" data-id="' + sid + '" title="Delete user record">Del</button>' +
                     '</div></td></tr>';
             });
             $('ut').innerHTML = h;
+            $('user-summary').innerHTML = '<div class="chip"><span class="live-dot"></span><b>' + online + '</b> online now</div><div class="chip"><b>' + active + '</b> active</div><div class="chip"><b>' + total + '</b> total accounts</div><div class="chip ' + (shared ? 'warn-txt' : '') + '"><b>' + shared + '</b> on shared licenses</div>';
         }
 
         // Load Licenses Table (from cache)
@@ -1337,7 +1395,7 @@
                 if(searchTxt && !(l.note || '').toLowerCase().includes(searchTxt) && !plainCode.toLowerCase().includes(searchTxt)) return;
 
                 var netPrice = (l.price || 0) - (l.discount || 0);
-                var sid = esc(id), isBlocked = l.status === 'blocked';
+                var sid = esc(id), isBlocked = l.status === 'blocked', ucnt = licUsers[id] || 0;
 
                 h += '<tr>' +
                     '<td>' +
@@ -1347,7 +1405,7 @@
                     '</td>' +
                     '<td><b>' + (+l.days || 0) + 'd</b></td>' +
                     '<td>৳' + netPrice + '</td>' +
-                    '<td><span class="badge ' + (l.status == 'unused' ? 'ok' : isBlocked ? 'bad' : 'pending') + '">' + esc(l.status) + '</span></td>' +
+                    '<td><span class="badge ' + (l.status == 'unused' ? 'ok' : isBlocked ? 'bad' : 'pending') + '">' + esc(l.status) + '</span>' + (ucnt ? '<br><small class="' + (ucnt > 1 ? 'warn-txt' : '') + '">👤 ' + ucnt + ' account' + (ucnt > 1 ? 's ⚠️' : '') + '</small>' : '') + '</td>' +
                     '<td>' + esc(l.note) + '</td>' +
                     '<td><div class="action-btns">' +
                     '<button class="btn-warning" data-a="ledit" data-id="' + sid + '">Edit</button>' +
@@ -1547,36 +1605,90 @@
             }
         }
 
-        // Broadcast Notice Publisher Handler (NEW: audience + schedule + validity)
+        // ===== Broadcasts: every message is stored in "broadcasts"; the live one is mirrored to system_notices/latest =====
+        function dOf(x) { return x && x.toDate ? x.toDate() : (x instanceof Date ? x : null); }
+        function localDT(d) { return d ? localDate(d) + 'T' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') : ''; }
+        function bcStatus(b) {
+            var n = Date.now(), s = dOf(b.startAt), e = dOf(b.endAt);
+            if (b.enabled === false) return ['paused', 'pending'];
+            if (e && e.getTime() < n) return ['expired', 'bad'];
+            if (s && s.getTime() > n) return ['scheduled', 'pending'];
+            return ['live', 'ok'];
+        }
+        function pickNotice(list) {
+            var n = Date.now(), live = [], up = [];
+            Object.keys(list).forEach(function(k) {
+                var b = list[k]; if (b.enabled === false) return;
+                var s = dOf(b.startAt), e = dOf(b.endAt);
+                if (e && e.getTime() < n) return;
+                if (s && s.getTime() > n) up.push([k, b]); else live.push([k, b]);
+            });
+            live.sort(function(a, b) { return (b[1].ts || 0) - (a[1].ts || 0); });
+            up.sort(function(a, b) { return dOf(a[1].startAt) - dOf(b[1].startAt); });
+            return live[0] || up[0] || null;
+        }
+        async function syncNotice(list) {
+            var p = pickNotice(list), ref = db.collection('system_notices').doc('latest');
+            if (!p) { await ref.delete().catch(function() {}); return; }
+            var b = p[1];
+            await ref.set({ title: b.title, message: b.message, audience: b.audience || 'all', startAt: b.startAt, endAt: b.endAt, sourceId: p[0], updatedAt: FV.serverTimestamp() });
+        }
+        async function bcWrite(id, patch, del) {
+            var ref = db.collection('broadcasts').doc(id);
+            if (del) await ref.delete(); else await ref.set(patch, { merge: true });
+            var list = Object.assign({}, bcCache);
+            if (del) delete list[id]; else list[id] = Object.assign({}, list[id] || {}, patch);
+            await syncNotice(list);
+        }
         async function sendBroadcastNotice() {
             var title = $('bc-title').value.trim();
             var msg = $('bc-msg').value.trim();
-
-            if(!title || !msg) {
-                alert("Please fill in both title and message.");
-                return;
-            }
-
+            if (!title || !msg) { alert("Please fill in both title and message."); return; }
             var start = $('bc-start').value ? new Date($('bc-start').value) : new Date();
             var end = new Date(start.getTime() + (parseInt($('bc-valid').value) || 7) * 864e5);
-
             try {
-                await db.collection('system_notices').doc('latest').set({
-                    title: title,
-                    message: msg,
-                    audience: $('bc-audience').value,
-                    startAt: TS.fromDate(start),
-                    endAt: TS.fromDate(end),
-                    updatedAt: FV.serverTimestamp()
-                });
-                $('bc-title').value = '';
-                $('bc-msg').value = '';
-                updateBroadcastPreview();
+                var ref = db.collection('broadcasts').doc();
+                await bcWrite(ref.id, { title: title, message: msg, audience: $('bc-audience').value, startAt: TS.fromDate(start), endAt: TS.fromDate(end), enabled: true, ts: Date.now(), createdAt: FV.serverTimestamp(), createdBy: me });
+                $('bc-title').value = ''; $('bc-msg').value = ''; updateBroadcastPreview();
                 audit('broadcast', title);
-                alert("✅ Broadcast notice published successfully!");
-            } catch(e) {
-                alert("❌ Failed to publish broadcast: " + e.message);
-            }
+                showToast('Broadcast saved & published');
+            } catch(e) { alert("❌ Failed to publish broadcast: " + e.message); }
+        }
+        function lbc() {
+            var box = $('bc-list'); if (!box) return;
+            var ids = Object.keys(bcCache).sort(function(a, b) { return (bcCache[b].ts || 0) - (bcCache[a].ts || 0); });
+            if (!ids.length) { box.innerHTML = '<small>No broadcasts yet. Published messages will be listed here.</small>'; return; }
+            box.innerHTML = ids.map(function(id) {
+                var b = bcCache[id], st = bcStatus(b), s = dOf(b.startAt), e = dOf(b.endAt), sid = esc(id);
+                return '<div class="mini-row" style="align-items:flex-start"><div style="flex:1;min-width:0"><b>' + esc(b.title) + '</b> <span class="badge ' + st[1] + '">' + st[0] + '</span> <small>· ' + esc(b.audience || 'all') + '</small>' +
+                    '<div style="color:var(--text-muted);font-size:0.9em;margin:2px 0">' + esc(String(b.message || '').slice(0, 110)) + '</div>' +
+                    '<small>' + (s ? s.toLocaleString('en-GB') : '—') + ' → ' + (e ? e.toLocaleString('en-GB') : '—') + '</small></div>' +
+                    '<div class="action-btns" style="max-width:180px;justify-content:flex-end"><button class="btn-warning" data-a="bedit" data-id="' + sid + '">Edit</button>' +
+                    '<button class="btn-eye" data-a="bext" data-id="' + sid + '">+7d</button>' +
+                    '<button class="btn-secondary" data-a="btog" data-id="' + sid + '">' + (b.enabled === false ? 'Resume' : 'Pause') + '</button>' +
+                    '<button class="btn-danger adm-only" data-a="bdel" data-id="' + sid + '">Del</button></div></div>';
+            }).join('');
+        }
+        function openBroadcastEdit(id) {
+            var b = bcCache[id]; if (!b) return;
+            var f = function(l, i) { return '<label style="font-size:0.78em;font-weight:600;color:var(--text-muted)">' + l + '</label>' + i; };
+            openInfo('Edit Broadcast',
+                f('Title', '<input id="be-title" value="' + esc(b.title) + '" style="margin-bottom:8px">') +
+                f('Message', '<textarea id="be-msg" rows="3" style="margin-bottom:8px">' + esc(b.message) + '</textarea>') +
+                f('Audience', '<select id="be-aud" style="margin-bottom:8px">' + [['all', 'Everyone'], ['premium', 'Premium only'], ['expired', 'Expired only'], ['trial', 'Trial / Free only']].map(function(o) { return '<option value="' + o[0] + '"' + (o[0] === (b.audience || 'all') ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>') +
+                f('Start', '<input id="be-start" type="datetime-local" value="' + localDT(dOf(b.startAt)) + '" style="margin-bottom:8px">') +
+                f('End (shorten or extend)', '<input id="be-end" type="datetime-local" value="' + localDT(dOf(b.endAt)) + '" style="margin-bottom:8px">') +
+                f('Status', '<select id="be-en" style="margin-bottom:12px"><option value="1"' + (b.enabled === false ? '' : ' selected') + '>Enabled</option><option value="0"' + (b.enabled === false ? ' selected' : '') + '>Paused</option></select>') +
+                '<button class="btn-success" style="width:100%" data-a="bsave" data-id="' + esc(id) + '">Save changes</button>');
+        }
+        async function saveBroadcastEdit(id) {
+            var t = $('be-title').value.trim(), m = $('be-msg').value.trim();
+            if (!t || !m) { alert('Title and message are required.'); return; }
+            if (!$('be-start').value || !$('be-end').value) { alert('Set start and end time.'); return; }
+            var s = new Date($('be-start').value), e = new Date($('be-end').value);
+            if (e <= s) { alert('End must be after start.'); return; }
+            await bcWrite(id, { title: t, message: m, audience: $('be-aud').value, startAt: TS.fromDate(s), endAt: TS.fromDate(e), enabled: $('be-en').value === '1', ts: Date.now(), updatedAt: FV.serverTimestamp() });
+            audit('broadcast_edit', t); $('info-modal').style.display = 'none'; showToast('Broadcast updated');
         }
 
         // CSV Export Helper (FIX: exports ONE table's data from cache, with plain license codes)
@@ -1689,11 +1801,25 @@
                 if (a == 'hr') { $('c-json').value = JSON.stringify(JSON.parse(HS[+el.dataset.i].json), null, 2); $('info-modal').style.display = 'none'; showToast('Loaded into editor — press Save'); return; }
                 if (!a || !id) return;
 
+                // ---- broadcast + user delete actions ----
+                if (a == 'bedit') { openBroadcastEdit(id); return; }
+                if (a == 'bsave') { await saveBroadcastEdit(id); return; }
+                if (a == 'bext') { var bb = bcCache[id], be = dOf(bb.endAt), base = be && be.getTime() > Date.now() ? be : new Date(); await bcWrite(id, { endAt: TS.fromDate(new Date(base.getTime() + 7 * 864e5)), enabled: true, ts: Date.now(), updatedAt: FV.serverTimestamp() }); audit('broadcast_extend', bb.title); showToast('Extended by 7 days'); return; }
+                if (a == 'btog') { var bt = bcCache[id]; await bcWrite(id, { enabled: bt.enabled === false, ts: Date.now() }); audit('broadcast_toggle', bt.title); return; }
+                if (a == 'bdel') { if (confirm('Delete this broadcast permanently?')) { await bcWrite(id, null, true); audit('broadcast_delete', id); } return; }
+                if (a == 'udel') {
+                    var du = usersCache[id]; if (!du || !confirm('Delete this user record?\n(Their Google/Firebase login itself is not removed)')) return;
+                    var db2 = db.batch(); db2.delete(db.collection('users').doc(id));
+                    var dl = du.licenseId && lic[du.licenseId];
+                    if (dl && dl.boundTo === id && dl.code !== 'ADMIN-GRANT' && confirm('Also release their license key so it can be used again?')) db2.update(db.collection('licenses').doc(du.licenseId), { status: 'unused', boundTo: null });
+                    await db2.commit(); audit('user_delete', id); return;
+                }
+
                 // ---- NEW feature actions ----
                 if (a == 'view') { var vl = lic[id]; openRevealModal(vl.code, id, vl.days, ''); return; }
                 if (a == 'renew') {
                     var ru = usersCache[id], re = expiryOf(ru);
-                    waOpen(ru.phone, 'আসসালামু আলাইকুম ' + (ru.name || '') + ', আপনার Pregnify Pro সাবস্ক্রিপশনের মেয়াদ ' + Math.ceil((re - Date.now()) / 864e5) + ' দিনের মধ্যে (' + re.toLocaleDateString('en-GB') + ') শেষ হবে। রিনিউ করতে আমাদের জানান। ধন্যবাদ!');
+                    waOpen(ru.phone, 'আসসালামু আলাইকুম ' + (ru.name || '') + ', আপনার Pregnify Pro সাবস্ক্রিপশনের মেয়াদ ' + Math.ceil((re - Date.now()) / 864e5) + ' দিনের মধ্যে (' + re.toLocaleDateString('en-GB') + ') শেষ হবে। রিনিউ করতে কল/মেসেজ করুন 01724651212 (WhatsApp) । ধন্যবাদ!');
                     return;
                 }
                 if (a == 'pok') { await approvePayment(id); return; }
